@@ -1,0 +1,15 @@
+apiVersion: v2
+name: fastmcp-production-template
+description: Production-grade MCP server with async PostgreSQL, OpenTelemetry, and security
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - mcp
+  - fastmcp
+  - ai-agents
+  - llm
+  - model-context-protocol
+maintainers:
+  - name: Manjunath Govindaraju
+    url: https://github.com/ManjunathGovindaraju

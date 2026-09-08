@@ -1,0 +1,12 @@
+# Tool Allowlist — Security Configuration
+# Only tools listed here can be invoked by MCP clients.
+# Remove or comment out any tool to block access.
+# get_pool_status is always allowed (health check — not listed here by design).
+
+allowed_tools:
+  - search_records
+  - get_record_detail
+  - get_statistics
+
+# To restrict to read-only tools in a specific environment, create
+# config/allowlist-prod.yaml and mount it via K8s ConfigMap.

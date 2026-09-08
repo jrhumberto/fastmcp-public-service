@@ -1,0 +1,68 @@
+# Default Helm values — override per environment
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/manjunathgovindaraju/fastmcp-production-template
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+service:
+  type: ClusterIP
+  port: 8000
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 70
+
+env:
+  LOG_LEVEL: INFO
+  OTEL_ENABLED: "true"
+  DB_POOL_MIN: "5"
+  DB_POOL_MAX: "20"
+
+# External Secrets Operator integration
+externalSecrets:
+  enabled: true
+  secretStoreName: vault-backend
+  refreshInterval: 1h
+  secrets:
+    - remoteKey: mcp-server/database
+      data:
+        - secretKey: DATABASE_URL
+          remoteRef:
+            key: database_url
+    - remoteKey: mcp-server/auth
+      data:
+        - secretKey: API_KEY
+          remoteRef:
+            key: api_key
+
+# ADOT sidecar for OpenTelemetry (AWS X-Ray)
+adotSidecar:
+  enabled: false
+  image: public.ecr.aws/aws-observability/aws-otel-collector:latest
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 15
+  periodSeconds: 20
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 5
+  periodSeconds: 10

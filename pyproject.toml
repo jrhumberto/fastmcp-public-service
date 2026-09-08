@@ -1,0 +1,87 @@
+[project]
+name = "fastmcp-production-template"
+version = "1.0.0"
+description = "Production-ready MCP server template with async PostgreSQL, OpenTelemetry, and Kubernetes"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "Manjunath Govindaraju", email = "manjunath.govindaraju@gmail.com" }
+]
+requires-python = ">=3.13"
+keywords = ["mcp", "fastmcp", "ai-agents", "llm", "model-context-protocol", "langchain", "anthropic", "claude", "python", "kubernetes", "opentelemetry"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "fastmcp>=2.0.0",
+    "asyncpg>=0.29.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "opentelemetry-sdk>=1.25.0",
+    "opentelemetry-exporter-otlp>=1.25.0",
+    "pyyaml>=6.0",
+    "uvicorn>=0.30.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0,<1.0",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.5.0",
+    "mypy>=1.10.0",
+    "bandit>=1.7.9",
+    "types-PyYAML>=6.0.12",
+]
+
+[project.urls]
+Homepage = "https://github.com/ManjunathGovindaraju/fastmcp-production-template"
+Repository = "https://github.com/ManjunathGovindaraju/fastmcp-production-template"
+Issues = "https://github.com/ManjunathGovindaraju/fastmcp-production-template/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/server"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "--cov=src --cov-report=xml --cov-report=term-missing --cov-fail-under=75"
+markers = [
+    "integration: marks tests that require a live PostgreSQL database (deselect with '-m not integration')",
+]
+
+[tool.coverage.run]
+omit = [
+    # Entry point — tested via docker/integration, not unit tests
+    "src/server/main.py",
+    # Pydantic Settings — config loading requires environment, tested via integration
+    "src/server/config/settings.py",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0,<1.0",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.5.0",
+    "mypy>=1.10.0",
+    "bandit>=1.7.9",
+    "types-PyYAML>=6.0.12",
+]

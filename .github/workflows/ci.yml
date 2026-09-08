@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5.4.0
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --frozen --all-extras
+
+      - name: Lint with Ruff
+        run: uv run ruff check src/ tests/
+
+      - name: Security scan with Bandit
+        run: uv run bandit -r src/ -lll
+
+      - name: Type check with mypy
+        run: uv run mypy src/ tests/ --ignore-missing-imports
+
+      - name: Run unit tests
+        run: uv run pytest tests/ -v --tb=short -m "not integration"
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          fail_ci_if_error: false
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: mcpuser
+          POSTGRES_PASSWORD: mcppassword
+          POSTGRES_DB: mcpdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mcpuser -d mcpdb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5.4.0
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --frozen --all-extras
+
+      - name: Seed database schema
+        run: psql postgresql://mcpuser:mcppassword@localhost:5432/mcpdb -f docker/init.sql
+        env:
+          PGPASSWORD: mcppassword
+
+      - name: Run integration tests
+        run: uv run pytest tests/ -v --tb=short -m integration
+        env:
+          DATABASE_URL: postgresql://mcpuser:mcppassword@localhost:5432/mcpdb
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - name: Build Docker image
+        run: docker build -f docker/Dockerfile -t fastmcp-production-template:ci .

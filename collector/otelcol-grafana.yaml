@@ -1,0 +1,67 @@
+# OpenTelemetry Collector — Grafana LGTM stack config
+#
+# Routes:
+#   Traces  → Grafana Tempo   (via OTLP gRPC)
+#   Metrics → Prometheus      (via remote-write)
+#
+# For local dev, use docker/docker-compose.observe.yml which starts the full
+# LGTM stack automatically with this config pre-mounted.
+#
+# For Kubernetes, deploy otel/opentelemetry-collector-contrib as a DaemonSet
+# or sidecar and mount this file. Update the endpoint hostnames to match your
+# in-cluster Tempo and Prometheus service names.
+#
+# Reference: https://opentelemetry.io/docs/collector/
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 512
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+  # Enrich all telemetry with resource attributes
+  resource:
+    attributes:
+      - action: insert
+        key: deployment.environment
+        value: ${env:ENVIRONMENT}
+
+exporters:
+  # Traces → Grafana Tempo
+  otlp/tempo:
+    endpoint: http://tempo:4317
+    tls:
+      insecure: true
+
+  # Metrics → Prometheus remote-write
+  prometheusremotewrite:
+    endpoint: http://prometheus:9090/api/v1/write
+    tls:
+      insecure_skip_verify: true
+    resource_to_telemetry_conversion:
+      enabled: true
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/tempo]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [prometheusremotewrite]

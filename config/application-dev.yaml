@@ -1,0 +1,11 @@
+# Development overrides — not for production use
+
+server:
+  log_level: DEBUG
+
+database:
+  pool_min: 2
+  pool_max: 5
+
+observability:
+  otel_enabled: false   # use console logging in dev

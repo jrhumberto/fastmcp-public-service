@@ -1,0 +1,21 @@
+# Default application configuration
+# Override with application-{env}.yaml or environment variables
+
+server:
+  name: fastmcp-production-template
+  description: "Production-grade MCP server with async DB, observability, and security"
+  port: 8000
+  log_level: INFO
+
+database:
+  pool_min: 5
+  pool_max: 20
+  command_timeout: 30
+
+security:
+  allowlist_path: config/allowlist.yaml
+  api_key_enabled: true
+
+observability:
+  otel_enabled: true
+  export_interval_ms: 30000

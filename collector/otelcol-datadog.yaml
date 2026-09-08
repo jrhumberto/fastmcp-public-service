@@ -1,0 +1,70 @@
+# OpenTelemetry Collector — Datadog config
+#
+# Routes:
+#   Traces  → Datadog APM   (via OTLP-native ingestion)
+#   Metrics → Datadog Metrics
+#
+# Requires:
+#   DD_API_KEY environment variable (set in your deployment environment / K8s secret)
+#
+# The MCP server must set:
+#   OTEL_ENABLED=true
+#   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+#
+# Datadog supports OTLP natively — no Datadog agent sidecar required.
+# Reference: https://docs.datadoghq.com/opentelemetry/
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 512
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+  # Map OTel resource attributes to Datadog tags
+  attributes:
+    actions:
+      - action: insert
+        key: env
+        from_attribute: deployment.environment
+      - action: insert
+        key: service
+        from_attribute: service.name
+      - action: insert
+        key: version
+        from_attribute: service.version
+
+exporters:
+  datadog:
+    api:
+      key: ${env:DD_API_KEY}
+      site: datadoghq.com   # change to datadoghq.eu for EU region
+    traces:
+      span_name_as_resource_name: true
+    metrics:
+      # Prefix all MCP metrics with "mcp." in Datadog (already prefixed in OTel names)
+      resource_attributes_as_tags: true
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes, batch]
+      exporters: [datadog]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes, batch]
+      exporters: [datadog]

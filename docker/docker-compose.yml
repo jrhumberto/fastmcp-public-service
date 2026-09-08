@@ -1,0 +1,45 @@
+services:
+  mcp-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://mcpuser:mcppassword@postgres:5432/mcpdb
+      - LOG_LEVEL=DEBUG
+      - OTEL_ENABLED=false
+      - API_KEY=dev-api-key
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../config:/app/config:ro
+    networks:
+      - mcp-network
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mcpuser
+      POSTGRES_PASSWORD: mcppassword
+      POSTGRES_DB: mcpdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mcpuser -d mcpdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mcp-network
+
+volumes:
+  postgres_data:
+
+networks:
+  mcp-network:
+    driver: bridge

@@ -1,0 +1,11 @@
+# Auto-provisioned Grafana dashboard loader for docker-compose.observe.yml
+apiVersion: 1
+
+providers:
+  - name: MCP Dashboards
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

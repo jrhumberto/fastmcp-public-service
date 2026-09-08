@@ -1,0 +1,75 @@
+# AWS Distro for OpenTelemetry (ADOT) Collector — AWS deployment config
+#
+# Routes:
+#   Traces  → AWS X-Ray
+#   Metrics → Amazon CloudWatch (EMF format)
+#
+# Deployment: sidecar container in EKS/ECS alongside the MCP server.
+# The MCP server must set:
+#   OTEL_ENABLED=true
+#   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+#
+# Helm: set adot.enabled=true in k8s/helm/values.yaml
+# IAM:  the pod/task role needs xray:PutTraceSegments and cloudwatch:PutMetricData
+#
+# Reference: https://aws-otel.github.io/docs/getting-started/collector
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    # Flush every second or when 512 spans accumulate — balances latency vs. cost
+    timeout: 1s
+    send_batch_size: 512
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+
+exporters:
+  awsxray:
+    region: ${env:AWS_REGION}
+    # Indexed attributes become X-Ray annotations (searchable in the console)
+    indexed_attributes:
+      - tool
+      - service.name
+
+  awsemf:
+    region: ${env:AWS_REGION}
+    log_group_name: /aws/mcp/${env:SERVICE_NAME}
+    log_stream_name: metrics
+    # Map OTel metric names to CloudWatch namespace
+    namespace: MCP/Tools
+    dimension_rollup_option: NoDimensionRollup
+    metric_declarations:
+      - dimensions: [[tool]]
+        metric_name_selectors:
+          - mcp\.tool\.calls
+          - mcp\.tool\.errors
+          - mcp\.tool\.duration
+      - dimensions: []
+        metric_name_selectors:
+          - mcp\.db\.pool_size
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  pprof:
+    endpoint: 0.0.0.0:1777
+
+service:
+  extensions: [health_check, pprof]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [awsxray]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [awsemf]

@@ -1,0 +1,23 @@
+{
+  "name": "FastMCP Production Template",
+  "image": "mcr.microsoft.com/devcontainers/python:1-3.13-bullseye",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": ".venv/bin/python",
+        "python.testing.pytestEnabled": true,
+        "editor.formatOnSave": true
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff"
+      ]
+    }
+  },
+  "onCreateCommand": "pip install uv",
+  "updateContentCommand": "uv sync"
+}

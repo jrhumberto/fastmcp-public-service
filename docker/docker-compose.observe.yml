@@ -1,0 +1,109 @@
+# Grafana LGTM observability stack — local production-like telemetry
+#
+# Usage (extends the base docker-compose.yml):
+#   make observe-up     # start MCP server + postgres + full LGTM stack
+#   make observe-down   # stop everything
+#
+# Or manually:
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.observe.yml up -d
+#
+# Once running:
+#   Grafana UI  →  http://localhost:3000  (anonymous access, no login)
+#   OTLP gRPC   →  localhost:4317
+#   OTLP HTTP   →  localhost:4318
+#   Prometheus  →  http://localhost:9090
+#   Tempo       →  http://localhost:3200
+#
+# Pre-built Grafana dashboards for MCP metrics are provisioned automatically
+# from docker/grafana/dashboards/. Datasources (Prometheus + Tempo) are also
+# provisioned automatically — no manual setup required.
+
+services:
+  # -------------------------------------------------------------------------
+  # OpenTelemetry Collector — receives OTLP from MCP server, fans out to
+  # Tempo (traces) and Prometheus (metrics)
+  # -------------------------------------------------------------------------
+  otelcol:
+    image: otel/opentelemetry-collector-contrib:0.102.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ../collector/otelcol-grafana.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "13133:13133" # collector health_check
+    environment:
+      - ENVIRONMENT=local
+    depends_on:
+      - tempo
+      - prometheus
+    networks:
+      - mcp-network
+
+  # -------------------------------------------------------------------------
+  # Grafana Tempo — distributed tracing backend
+  # -------------------------------------------------------------------------
+  tempo:
+    image: grafana/tempo:2.5.0
+    command: ["-config.file=/etc/tempo/config.yaml"]
+    volumes:
+      - ../docker/tempo.yaml:/etc/tempo/config.yaml:ro
+      - tempo_data:/tmp/tempo
+    ports:
+      - "3200:3200"   # Tempo HTTP API (queried by Grafana)
+      - "4319:4317"   # OTLP gRPC ingest (internal — accessed by otelcol)
+    networks:
+      - mcp-network
+
+  # -------------------------------------------------------------------------
+  # Prometheus — metrics store, scraped by Grafana
+  # -------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-remote-write-receiver"  # accept remote-write from otelcol
+    volumes:
+      - ../docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - mcp-network
+
+  # -------------------------------------------------------------------------
+  # Grafana — dashboards and data exploration
+  # Datasources (Prometheus + Tempo) and dashboards are auto-provisioned.
+  # -------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:11.1.0
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    volumes:
+      - ../docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - tempo
+    networks:
+      - mcp-network
+
+  # -------------------------------------------------------------------------
+  # Override: enable OTLP on the MCP server when running with this compose file
+  # -------------------------------------------------------------------------
+  mcp-server:
+    environment:
+      - OTEL_ENABLED=true
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4317
+    depends_on:
+      - otelcol
+
+volumes:
+  tempo_data:
+  prometheus_data:
+  grafana_data:
