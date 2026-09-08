@@ -1,132 +1,179 @@
-# fastmcp-production-template
+# 🏛️ Arquitetura MCP para Setor Público (fastmcp-public-service)
+Documento técnico completo contendo: ambiente Docker, documentação do sistema, diagramas, regras de Guardrails, integração de ferramentas de qualidade e prompt definitivo para o Agente Arquiteto de Software do Setor Público.
+Importante: Em ambiente de desenvolvimento, banco utilizado SQL Server. EM Produção e Homologação, Postgresql.
+---
 
-> Production-ready MCP server template with async PostgreSQL, OpenTelemetry, tool-level security allowlisting, Docker, and Kubernetes Helm chart. Zero to deployed in 10 minutes.
+## 1.1 Servidor MCP - Características/Problemas/Backlog
 
-[![CI](https://github.com/ManjunathGovindaraju/fastmcp-production-template/actions/workflows/ci.yml/badge.svg)](https://github.com/ManjunathGovindaraju/fastmcp-production-template/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/ManjunathGovindaraju/fastmcp-production-template/branch/main/graph/badge.svg)](https://codecov.io/gh/ManjunathGovindaraju/fastmcp-production-template)
-[![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/)
-[![FastMCP](https://img.shields.io/badge/FastMCP-3.x-green.svg)](https://github.com/jlowin/fastmcp)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-> Read the full write-up: [Building a Production-Ready MCP Server: Async PostgreSQL, OpenTelemetry, and Kubernetes in One Template](https://dev.to/manjunathgovindaraju/building-a-production-ready-mcp-server-async-postgresql-opentelemetry-and-kubernetes-in-one-37co)
-
-## Why this template exists
-
-Over the past year I built and deployed **20+ MCP servers in production** inside a regulated life sciences environment — powering AI agents that search 57M+ research records, automate scientific workflows, and surface real-time data to LLMs via 150+ registered tools.
-
-Every new server started the same way: copy the FastMCP quickstart, then spend days re-solving the same four problems:
-
-- Async database connections that deadlock under concurrent agent calls
-- No guardrails against prompt injection via unauthorized tool invocation
-- Zero observability — no traces, no metrics, no idea what the LLM was actually calling
-- Kubernetes deployments cobbled together from unrelated examples
-
-After the third server, I extracted the patterns that actually held up in production and built this template. The allowlist security pattern came directly from needing to prevent AI agents from invoking internal debug tools in a HIPAA-adjacent environment. The asyncpg pool configuration comes from real connection exhaustion incidents at 20 concurrent agents. The OpenTelemetry setup is what we use to debug tool call latency today.
-
-This is not a toy demo. Fork it, rename the tools to match your domain, and ship.
+[x] Arquitetura Kubernetes para produção.
+[x] Gerenciar um pool de conexões de banco de dados com segurança entre chamadas assíncronas.
+[x] Impedir injeção de prompt via invocação não autorizada de ferramentas.
+[x] Rastreio na sua pilha de observabilidade - **caminho crítico**.
 
 ---
 
-## The problems it solves
 
-Most MCP server examples stop before the hard parts. The moment you try to deploy one in production you hit the same set of problems:
+## 1.2 Funcionalidades para Produção
 
-- How do I manage a database connection pool safely across async tool calls?
-- How do I prevent prompt injection via unauthorized tool invocation?
-- How do I get distributed traces into my existing observability stack?
-- How do I deploy this to Kubernetes with proper secrets management?
-
-This template solves all of that.
-
----
-
-## Demo
-
-![FastMCP server startup and tool call demo](docs/demo.gif)
-
----
-
-## Features
-
-| Feature | Implementation |
+| Funcionalidade | Implementação |
 |---|---|
-| Async PostgreSQL | `asyncpg` connection pool (min 5, max 20), parameterized queries |
-| OpenTelemetry | `@instrument_tool` decorator records traces + 4 metrics (`tool.calls`, `tool.errors`, `tool.duration`, `db.pool_size`) on every tool call |
-| Multi-backend observability | Pre-built collector configs for AWS ADOT → X-Ray, Grafana LGTM stack, and Datadog. One-command local stack: `make observe-up` |
-| Security allowlist | YAML-based tool allowlist prevents unauthorized tool invocation and prompt injection |
-| Docker | Multi-stage build, non-root user (`mcpuser`), health check |
-| Kubernetes | Helm chart, HPA (2–8 replicas), External Secrets Operator, optional ADOT sidecar |
-| CI/CD | GitHub Actions: Ruff + Bandit + mypy → unit tests → integration tests (postgres service) → Docker build |
-| Configuration | Pydantic Settings, `.env` based, 12-factor compliant |
+| PostgreSQL assíncrono | Pool de conexão `asyncpg` (mín 5, máx 20), consultas parametrizadas |
+| OpenTelemetry | Decorador `@instrument_tool` registra rastros + 4 métricas (`tool.calls`, `tool.errors`, `tool.duration`, `db.pool_size`) em cada chamada de ferramenta |
+| Observabilidade multi‑backend | Configurações de coletor pré‑construídas para AWS ADOT → X‑Ray, stack Grafana LGTM e Datadog. Stack local com um comando: `make observe-up` |
+| Segurança por lista de permissões | Lista de permissões baseada em YAML impede invocação não autorizada de ferramentas e injeção de prompt |
+| Docker | Build multi‑stage, usuário não‑root (`mcpuser`), health check |
+| Kubernetes | Chart Helm, HPA (2–8 réplicas), External Secrets Operator, sidecar ADOT opcional |
+| CI/CD | GitHub Actions: Ruff + Bandit + mypy → testes unitários → testes de integração (serviço postgres) → build Docker |
+| Configuração | Pydantic Settings, baseado em `.env`, compatível com 12‑factor |
 
 ---
 
-## Quick Start
+## 1.3 Ambiente de Desenvolvimento 
 
-### Option 1: Docker Compose (2 minutes)
+### 🐳 1.3.1 Docker com SQL Server (se desejável)
 
-```bash
-git clone https://github.com/ManjunathGovindaraju/fastmcp-production-template.git
-cd fastmcp-production-template
-cp .env.example .env
-docker compose -f docker/docker-compose.yml up
+### `Dockerfile.dev`
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Dependências do sistema para pyodbc e SQL Server
+RUN apt-get update && apt-get install -y \
+    curl \
+    gnupg \
+    unixodbc-dev \
+    && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
+    && curl https://packages.microsoft.com/config/debian/11/prod.list > /etc/apt/sources.list.d/mssql-release.list \
+    && apt-get update && ACCEPT_EULA=Y apt-get install -y msodbcsql17 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Dependências Python
+COPY pyproject.toml ./
+RUN pip install --no-cache-dir -e ".[dev]"
+
+# Copiar código
+COPY . .
+
+# Variáveis de ambiente padrão (sobrescrevíveis via docker-compose)
+ENV SQL_SERVER_HOST=localhost
+ENV SQL_SERVER_DB=publico_dev
+ENV SQL_SERVER_USER=sa
+ENV SQL_SERVER_PASSWORD=Dev@123456
+ENV SQL_ENCRYPT=no
+ENV SQL_TRUST_CERT=yes
+
+# Porta padrão do MCP (JSON-RPC sobre SSE/Stdio)
+EXPOSE 8000
+
+CMD ["python", "-m", "mcp_server"]
 ```
 
-The MCP server starts at `http://localhost:8000/mcp`. PostgreSQL starts with sample data loaded from `docker/init.sql`.
+### `docker-compose.yml`
+```yaml
+version: '3.9'
+services:
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8000:8000"
+    environment:
+      - SQL_SERVER_HOST=mssql
+      - SQL_SERVER_DB=publico_dev
+      - SQL_SERVER_USER=sa
+      - SQL_SERVER_PASSWORD=<SENHA>
+      - SQL_ENCRYPT=no
+      - SQL_TRUST_CERT=yes
+    depends_on:
+      - mssql
+    volumes:
+      - .:/app
+      - /app/.venv
 
-### Option 2: Docker Compose + Full Observability Stack
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=<SENHA>
+      - MSSQL_PID=Express
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql_data:/var/opt/mssql
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql
+
+volumes:
+  mssql_data:
+```
+
+### `init-db.sql` (Exemplo de estrutura segura)
+```sql
+CREATE DATABASE publico_dev;
+GO
+USE publico_dev;
+GO
+CREATE TABLE servidores (
+    id INT PRIMARY KEY IDENTITY(1,1),
+    nome VARCHAR(100) NOT NULL,
+    cpf CHAR(11) NOT NULL,
+    email VARCHAR(100) NOT NULL,
+    lotacao VARCHAR(100),
+    criado_em DATETIME2 DEFAULT SYSUTCDATETIME()
+);
+GO
+-- Usuário com permissão mínima (apenas SELECT)
+CREATE LOGIN mcp_user WITH PASSWORD = 'Mcp@Dev123';
+CREATE USER mcp_user FOR LOGIN mcp_user;
+GRANT SELECT ON servidores TO mcp_user;
+GO
+```
+
+---
+
+
+### 1.3.2 Início Rápido para Testar Observabilidade (Docker Compose comPostgresql + Stack Completo de Observabilidade)
+
+
+### 
 
 ```bash
 cp .env.example .env
 make observe-up
 ```
 
-Starts the MCP server, PostgreSQL, **and** the full Grafana LGTM stack (OpenTelemetry Collector → Tempo → Prometheus → Grafana).
+Inicia o servidor MCP, PostgreSQL **e** a stack completa Grafana LGTM (OpenTelemetry Collector → Tempo → Prometheus → Grafana).
 
 | Endpoint | URL |
 |---|---|
-| MCP server | `http://localhost:8000/mcp` |
-| Grafana dashboards | `http://localhost:3000` (no login) |
-| Prometheus metrics | `http://localhost:9090` |
+| Servidor MCP | `http://localhost:8000/mcp` |
+| Dashboards Grafana | `http://localhost:3000` (sem login) |
+| Métricas Prometheus | `http://localhost:9090` |
 
-`OTEL_ENABLED` is automatically set to `true` when using this compose profile. Stop everything with `make observe-down`.
-
-### Option 3: Local Python
-
-```bash
-git clone https://github.com/ManjunathGovindaraju/fastmcp-production-template.git
-cd fastmcp-production-template
-
-# Install uv if needed: https://docs.astral.sh/uv/
-uv sync
-
-cp .env.example .env
-# Edit .env — set DATABASE_URL to your PostgreSQL connection string
-
-python -m src.server.main
-```
+`OTEL_ENABLED` é definido automaticamente como `true` ao usar este perfil de compose. Pare tudo com `make observe-down`.
 
 ---
 
-## Architecture
+## Arquitetura
 
-### System Overview
+### Visão Geral do Sistema
 
 ```mermaid
 graph TD
-    Client["🤖 MCP Client<br/>(LLM / AI Agent)"]
+    Client["🤖 Cliente MCP<br/>(LLM / Agente IA)"]
 
-    subgraph Server["FastMCP Server  —  http://0.0.0.0:8000/mcp"]
+    subgraph Server["Servidor FastMCP  —  http://0.0.0.0:8000/mcp"]
         direction TB
-        Transport["Streamable HTTP Transport"]
+        Transport["Transporte HTTP Streamable"]
 
-        subgraph Middleware["Cross-cutting concerns"]
-            Allowlist["🔒 Allowlist Security<br/>config/allowlist.yaml"]
-            OTel["📊 OpenTelemetry<br/>Traces · Metrics"]
-            Settings["⚙️ Pydantic Settings<br/>.env / env vars"]
+        subgraph Middleware["Preocupações transversais"]
+            Allowlist["🔒 Segurança por Lista de Permissões<br/>config/allowlist.yaml"]
+            OTel["📊 OpenTelemetry<br/>Rastros · Métricas"]
+            Settings["⚙️ Configurações Pydantic<br/>.env / variáveis de ambiente"]
         end
 
-        subgraph Tools["Registered Tools"]
+        subgraph Tools["Ferramentas Registradas"]
             T1["search_records"]
             T2["get_record_detail"]
             T3["get_statistics"]
@@ -137,65 +184,65 @@ graph TD
     end
 
     DB[("PostgreSQL")]
-    OTelBackend["📈 OTLP Backend<br/>Jaeger / Grafana / X-Ray"]
+    OTelBackend["📈 Backend OTLP<br/>Jaeger / Grafana / X-Ray"]
 
     Client -->|"JSON-RPC over HTTP"| Transport
     Transport --> Allowlist
     Allowlist --> Tools
     Tools --> Pool
-    Pool -->|"async queries"| DB
-    OTel -.->|"traces + metrics"| OTelBackend
+    Pool -->|"consultas assíncronas"| DB
+    OTel -.->|"rastros + métricas"| OTelBackend
 ```
 
-### Request Lifecycle
+### 1.3.3 Ciclo de Vida da Requisição
 
 ```mermaid
 sequenceDiagram
-    participant C as MCP Client
-    participant S as FastMCP Server
-    participant AL as Allowlist Guard
-    participant T as Tool Function
+    participant C as Cliente MCP
+    participant S as Servidor FastMCP
+    participant AL as Guarda da Lista de Permissões
+    participant T as Função da Ferramenta
     participant DB as PostgreSQL
 
     C->>S: tools/call { name, arguments }
     S->>AL: is_allowed(tool_name)?
-    alt tool not in allowlist
+    alt ferramenta não está na lista
         AL-->>S: PermissionError
         S-->>C: isError: true
-    else tool allowed
+    else ferramenta permitida
         AL-->>S: OK
         S->>T: execute(arguments)
-        T->>DB: parameterized query ($1, $2 ...)
+        T->>DB: consulta parametrizada ($1, $2 ...)
         DB-->>T: rows
         T-->>S: result dict
         S-->>C: isError: false, content
     end
 ```
 
-### Deployment Architecture (Kubernetes)
+### 1.3.4 Arquitetura de Deploy (Kubernetes)
 
 ```mermaid
 graph LR
-    subgraph K8s["Kubernetes Cluster  —  mcp-system namespace"]
+    subgraph K8s["Cluster Kubernetes  —  namespace mcp-system"]
         direction TB
 
         subgraph Ingress["Ingress"]
-            IG["Ingress Controller"]
+            IG["Controlador de Ingress"]
         end
 
-        subgraph Workload["Deployment  (HPA: 2–8 replicas)"]
-            P1["Pod 1<br/>MCP Server + ADOT Sidecar"]
-            P2["Pod 2<br/>MCP Server + ADOT Sidecar"]
+        subgraph Workload["Deployment  (HPA: 2–8 réplicas)"]
+            P1["Pod 1<br/>Servidor MCP + Sidecar ADOT"]
+            P2["Pod 2<br/>Servidor MCP + Sidecar ADOT"]
         end
 
-        subgraph Config["Configuration"]
+        subgraph Config["Configuração"]
             CM["ConfigMap<br/>allowlist.yaml"]
             ES["ExternalSecret<br/>→ Vault"]
             SEC["Secret<br/>DATABASE_URL · API_KEY"]
         end
 
-        subgraph Obs["Observability"]
-            ADOT["ADOT Collector"]
+        subgraph Obs["Observabilidade"]
+            ADOT["Coletor ADOT"]
             XRay["AWS X-Ray"]
         end
     end
@@ -211,16 +258,16 @@ graph LR
     P2 --> ADOT
 ```
 
-### CI/CD Pipeline
+### 1.3.5 Pipeline CI/CD
 
 ```mermaid
 flowchart LR
-    PR["Pull Request<br/>or push to main"]
+    PR["Pull Request<br/>ou push para main"]
     Lint["Ruff + Bandit + mypy<br/>src/ tests/"]
-    Unit["Unit tests<br/>pytest -m 'not integration'"]
-    Int["Integration tests<br/>pytest -m integration<br/>postgres:16 service"]
-    Docker["Docker Build<br/>docker/Dockerfile"]
-    Done["✅ Ready to deploy"]
+    Unit["Testes unitários<br/>pytest -m 'not integration'"]
+    Int["Testes de integração<br/>pytest -m integration<br/>serviço postgres:16"]
+    Docker["Build Docker<br/>docker/Dockerfile"]
+    Done["✅ Pronto para deploy"]
 
     PR --> Lint
     Lint -->|pass| Unit
@@ -235,34 +282,34 @@ flowchart LR
 
 ---
 
-## Security Model
+## 2. Modelo de Segurança
 
-Tool invocations are gated by a YAML allowlist loaded at server startup. Any tool not on the list raises `PermissionError` before execution — preventing prompt injection attacks where a malicious prompt attempts to invoke an internal or debugging tool.
+Invocações de ferramentas são controladas por uma lista de permissões em YAML carregada na inicialização do servidor. Qualquer ferramenta que não esteja na lista gera `PermissionError` antes da execução — impedindo ataques de injeção de prompt onde um prompt malicioso tenta invocar uma ferramenta interna ou de depuração.
 
 ```mermaid
 flowchart TD
-    Invoke["tools/call request"]
+    Invoke["requisição tools/call"]
     Check{"tool_name in<br/>allowed_tools?"}
-    Permit["Execute tool function"]
-    Block["Raise PermissionError<br/>isError: true"]
-    Result["Return result to client"]
+    Permit["Executar função da ferramenta"]
+    Block["Levantar PermissionError<br/>isError: true"]
+    Result["Retornar resultado ao cliente"]
 
     Invoke --> Check
     Check -->|yes| Permit --> Result
     Check -->|no| Block
 ```
 
-**Allowlist config** (`config/allowlist.yaml`):
+**Configuração da lista de permissões** (`config/allowlist.yaml`):
 
 ```yaml
 allowed_tools:
   - search_records
   - get_record_detail
   - get_statistics
-  # get_pool_status intentionally omitted — health is always reachable
+  # get_pool_status intencionalmente omitido — saúde está sempre acessível
 ```
 
-**Decorator usage**:
+**Uso do decorador**:
 
 ```python
 @require_allowlist("search_records")
@@ -270,273 +317,78 @@ async def search_records(query: str, limit: int = 20) -> dict:
     ...
 ```
 
-**SQL injection prevention** — two layers:
-1. All user-supplied values use `asyncpg` parameterized queries (`$1`, `$2`)
-2. `get_statistics` validates `group_by` against a hardcoded column allowlist before query construction
-3. `search_records` validates `filters` keys against a hardcoded column allowlist
+**Prevenção de injeção SQL** — duas camadas:
+1. Todos os valores fornecidos pelo usuário usam consultas parametrizadas do `asyncpg` (`$1`, `$2`)
+2. `get_statistics` valida `group_by` contra uma lista de colunas permitidas antes de construir a consulta
+3. `search_records` valida as chaves de `filters` contra uma lista de colunas permitidas
 
 ---
 
-## Observability
+## 3. Observabilidade
 
-Every tool call is automatically instrumented via the `@instrument_tool` decorator. The decorator is the **outermost** layer — it records all attempts including allowlist-blocked calls.
+Cada chamada de ferramenta é automaticamente instrumentada via o decorador `@instrument_tool`. O decorador é a **camada mais externa** — registra todas as tentativas, inclusive chamadas bloqueadas pela lista de permissões.
 
 ```mermaid
 graph LR
     Call["tools/call"]
-    Inst["@instrument_tool<br/>counter · histogram · span"]
-    AL["@require_allowlist"]
-    Fn["Tool function"]
-
-    Call --> Inst --> AL --> Fn
+    Inst["@instrument_tool<br/>conta chamadas, erros, duração"]
+    Exec["Execução da ferramenta (ou bloqueio)"]
+    Emit["Emissão de rastro/ métrica"]
+    Call --> Inst --> Exec --> Emit
 ```
 
-### Metrics emitted
 
-| Metric | Type | Attributes |
-|---|---|---|
-| `mcp.tool.calls` | Counter | `tool` |
-| `mcp.tool.errors` | Counter | `tool` |
-| `mcp.tool.duration` | Histogram (ms) | `tool` |
-| `mcp.db.pool_size` | Gauge | — |
+-----
 
-### How it works
+## 📊 4. Diagramas (Mermaid)
 
-```python
-# Decorator order in every tool file:
-@instrument_tool("search_records")   # outermost — records all attempts
-@require_allowlist("search_records") # inner — may raise PermissionError
-async def search_records(...):
-    ...
-```
-
-The `Telemetry` instance is initialized in `main.py` and stored in `observability/context.py` (a singleton mirroring `db/pool.py`). If `get_telemetry()` returns `None` (e.g., in unit tests), the decorator is a zero-overhead pass-through.
-
-### Backend routing
-
-The app emits standard OTLP and is backend-agnostic. The `collector/` directory provides pre-built configs for three deployment targets:
-
-| File | Routes to |
-|---|---|
-| `collector/adot-aws.yaml` | AWS X-Ray (traces) + CloudWatch EMF (metrics) via ADOT sidecar |
-| `collector/otelcol-grafana.yaml` | Grafana Tempo (traces) + Prometheus (metrics) |
-| `collector/otelcol-datadog.yaml` | Datadog APM + Datadog Metrics |
-
+### 4.2 Fluxo de Operação (Tool Call)
 ```mermaid
-graph LR
-    Server["FastMCP Server<br/>OTLP gRPC :4317"]
-
-    subgraph Collector["OTel Collector (ADOT or otelcol-contrib)"]
-        C["collector/*.yaml"]
-    end
-
-    subgraph Backends["Observability Backends"]
-        B1["AWS X-Ray + CloudWatch"]
-        B2["Grafana Tempo + Prometheus"]
-        B3["Datadog APM"]
-    end
-
-    Server -->|"OTLP"| Collector
-    Collector --> B1
-    Collector --> B2
-    Collector --> B3
+sequenceDiagram
+    participant C as Cliente MCP
+    participant S as Servidor FastMCP
+    participant G as Guardrails
+    participant DB as SQL Server
+    C->>S: tool_call(consultar_servidores, params)
+    S->>G: validar_query(params)
+    G->>G: verificar permissões & sintaxe
+    G->>S: query parametrizada + audit_id
+    S->>DB: execute(query, params)
+    DB->>S: rows + metadata
+    S->>G: mascarar PII & logar acesso
+    G->>S: resposta sanitizada
+    S->>C: tool_result
 ```
 
-### Local observability with Grafana LGTM
-
-```bash
-make observe-up   # starts MCP server + postgres + otelcol + Tempo + Prometheus + Grafana
-# Open http://localhost:3000 — traces and metrics appear immediately
-make observe-down
-```
-
-### Configure in `.env`
-
-```bash
-OTEL_ENABLED=true
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317   # collector endpoint
-OTEL_SERVICE_NAME=fastmcp-production-template
-```
-
-Set `OTEL_ENABLED=false` in local dev to write spans to stdout instead.
-
----
-
-## Kubernetes Deployment
-
-```bash
-# Install with Helm
-helm install fastmcp-server k8s/helm/ \
-  --set image.repository=your-registry/fastmcp-production-template \
-  --set image.tag=1.0.0 \
-  --namespace mcp-system \
-  --create-namespace
-
-# Scale manually
-kubectl scale deployment fastmcp-server --replicas=4 -n mcp-system
-
-# Check HPA status
-kubectl get hpa -n mcp-system
-```
-
-The Helm chart includes:
-- HPA: auto-scales 2–8 replicas at 70% CPU
-- External Secrets Operator integration (pulls `DATABASE_URL`, `API_KEY` from HashiCorp Vault)
-- ADOT sidecar annotation support for AWS X-Ray tracing
-- Non-root security context (`runAsNonRoot: true`)
-- ConfigMap volume mount for `allowlist.yaml`
-
----
-
-## Project Structure
-
-```
-fastmcp-production-template/
-├── src/server/
-│   ├── main.py                  # FastMCP entry point, lifespan hooks
-│   ├── config/
-│   │   ├── settings.py          # Pydantic Settings (env / .env)
-│   │   └── security.py          # Allowlist loader + @require_allowlist decorator
-│   ├── db/
-│   │   ├── connection.py        # asyncpg DatabasePool (fetch/execute helpers)
-│   │   └── pool.py              # Module-level singleton — tools call get_pool()
-│   ├── observability/
-│   │   ├── telemetry.py         # OTel setup — OTLP (prod) or console (dev) exporter
-│   │   ├── context.py           # Telemetry singleton — set_telemetry/get_telemetry
-│   │   └── instrument.py        # @instrument_tool decorator (metrics + trace span)
-│   └── tools/
-│       ├── search.py            # search_records — full-text search with pagination
-│       ├── detail.py            # get_record_detail — fetch single record by ID
-│       ├── stats.py             # get_statistics — aggregate counts by field
-│       └── health.py            # get_pool_status — DB pool health (no allowlist)
-├── collector/
-│   ├── adot-aws.yaml            # ADOT collector → AWS X-Ray + CloudWatch
-│   ├── otelcol-grafana.yaml     # otelcol-contrib → Grafana Tempo + Prometheus
-│   └── otelcol-datadog.yaml     # otelcol-contrib → Datadog APM + Metrics
-├── config/
-│   └── allowlist.yaml           # Tool allowlist (edit to expose/hide tools)
-├── docker/
-│   ├── Dockerfile               # Multi-stage build (builder + runtime, non-root)
-│   ├── docker-compose.yml       # MCP server + PostgreSQL with health check
-│   ├── docker-compose.observe.yml  # Adds Grafana LGTM stack (make observe-up)
-│   ├── init.sql                 # Sample schema and seed data
-│   ├── tempo.yaml               # Grafana Tempo config for local stack
-│   ├── prometheus.yml           # Prometheus scrape config for local stack
-│   └── grafana/provisioning/    # Auto-provisioned datasources + dashboards
-├── k8s/helm/
-│   ├── values.yaml              # Helm values (HPA, ESO, optional ADOT sidecar)
-│   └── templates/
-│       └── deployment.yaml      # K8s Deployment with security context
-├── tests/
-│   ├── conftest.py              # mock_telemetry fixture
-│   ├── test_security.py         # Allowlist enforcement tests
-│   ├── test_telemetry.py        # context singleton + @instrument_tool + setup_telemetry
-│   ├── test_tools.py            # Tool behavior + SQL injection prevention (unit, mocked DB)
-│   └── test_integration.py      # Real DB tests — skipped unless DATABASE_URL is set
-├── .github/workflows/
-│   ├── ci.yml                   # Lint → unit tests → integration tests → Docker build
-│   └── release.yml              # Tag-based release workflow
-├── pyproject.toml               # uv/hatch project config
-└── .env.example                 # Configuration reference
+### 4.3 Controle de Segurança & LGPD
+```mermaid
+flowchart LR
+    A[Entrada] --> B{Guardrails}
+    B -->|SELECT apenas| C[Parametrização]
+    B -->|DDL/DML| D[Rejeitar + Logar]
+    C --> E[Execução DB]
+    E --> F[Retorno]
+    F --> G{Mascaramento}
+    G -->|CPF/CNPJ/Email| H[Regex/Hash]
+    G -->|Outros| I[Pass-through]
+    H --> J[Auditoria LGPD]
+    I --> J
+    J --> K[Resposta Final]
 ```
 
 ---
 
-## Extending This Template
+## 🛡️ 5. Regras de Guardrails & Conformidade (LGPD/Segurança - Caminhos críticos observados)
 
-Adding a new tool takes three steps:
+| Categoria | Regra Técnica | Base Legal / Norma |
+|-----------|---------------|-------------------|
+| **Validação de Sintaxe** | Bloqueio de `INSERT`, `UPDATE`, `DELETE`, `DROP`, `EXEC`, `xp_` | Princípio da Mínimo Privilégio |
+| **Prevenção de Injeção** | Obrigatório uso de `?` placeholders. Rejeição de strings interpoladas | OWASP ASVS 4.0.1 |
+| **Mascaramento PII** | CPF: `***.***.***-XX`, CNPJ: `XX.XXX.XXX/XXXX-XX`, Email: `***@***.***` | LGPD Art. 5º, 6º, 46 |
+| **Auditoria** | Log estruturado: `audit_id`, `usuario`, `query_hash`, `linhas_retornadas`, `timestamp_utc` | LGPD Art. 37, 43, 50 |
+| **Retenção** | Respostas não são persistidas em cache. Logs rotacionados a 90 dias | LGPD Art. 46, ANPD Guia |
+| **Criptografia** | TLS 1.2+ obrigatório. `Encrypt=yes` no driver. Chaves via `secrets` | NBR ISO 27001, LGPD Art. 46 |
+| **Rate Limiting** | Máx 100 req/min por cliente. Timeout 15s por query | Resili
 
-**Step 1 — Create the tool** in `src/server/tools/your_tool.py`:
-
-```python
-from ..config.security import require_allowlist
-from ..db.pool import get_pool
-from ..observability.instrument import instrument_tool
-
-@instrument_tool("your_tool_name")   # outermost — records metrics + trace span
-@require_allowlist("your_tool_name") # inner — blocks if not in allowlist
-async def your_tool_name(param: str) -> dict:
-    row = await get_pool().fetchrow(
-        "SELECT * FROM your_table WHERE id = $1", param
-    )
-    return dict(row) if row else {}
-```
-
-**Step 2 — Register it** in `src/server/main.py`:
-
-```python
-from .tools import your_tool
-mcp.add_tool(your_tool.your_tool_name)
-```
-
-**Step 3 — Add it to the allowlist** in `config/allowlist.yaml`:
-
-```yaml
-allowed_tools:
-  - your_tool_name
-```
 
 ---
-
-## Running Tests
-
-### Unit tests (no database required)
-
-```bash
-make test-unit        # default — safe for pre-commit, CI, offline dev
-```
-
-28 tests covering: allowlist enforcement, telemetry singleton, `@instrument_tool` decorator (call counting, error counting, duration recording, span wrapping, `functools.wraps`), `setup_telemetry` console and OTLP modes, all four tool functions with mocked DB, and SQL injection prevention.
-
-### Integration tests (requires PostgreSQL)
-
-```bash
-# Start postgres first (uses the same docker-compose as `make observe-up`):
-docker compose -f docker/docker-compose.yml up -d postgres
-
-# Run integration tests:
-DATABASE_URL=postgresql://mcpuser:mcppassword@localhost:5432/mcpdb make test-integration
-```
-
-21 tests covering: real `DatabasePool` lifecycle, `search_records` (pagination, filters, limit capping), `get_record_detail` (found / not-found paths), `get_statistics` (grouping, totals), and SQL injection prevention against a live database.
-
-### All checks (lint + type check + unit tests)
-
-```bash
-make check
-```
-
-### Coverage
-
-Unit tests alone reach **82% coverage** (entry-point files `main.py` and `settings.py` excluded — covered by integration tests). The 75% threshold is enforced in CI on both test phases.
-
----
-
-## Configuration Reference
-
-| Variable | Default | Description |
-|---|---|---|
-| `SERVICE_NAME` | `fastmcp-production-template` | MCP server name |
-| `PORT` | `8000` | Uvicorn listen port |
-| `DATABASE_URL` | — | asyncpg DSN (`postgresql://user:pass@host/db`) |
-| `DB_POOL_MIN` | `5` | Minimum pool connections |
-| `DB_POOL_MAX` | `20` | Maximum pool connections |
-| `ALLOWLIST_PATH` | `config/allowlist.yaml` | Path to tool allowlist |
-| `API_KEY_ENABLED` | `true` | Enable API key auth |
-| `API_KEY` | — | Bearer token for requests |
-| `OTEL_ENABLED` | `true` | Enable OpenTelemetry export |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4317` | OTLP collector endpoint |
-
----
-
-## Author
-
-**Manjunath Govindaraju** — Principal Software Engineer with 23 years building production systems. Currently focused on AI platform engineering: multi-agent orchestration (LangGraph), MCP servers, async data pipelines, and enterprise Kubernetes deployments.
-
-[LinkedIn](https://www.linkedin.com/in/manjunathgovindaraju/) · [GitHub](https://github.com/ManjunathGovindaraju)
-
----
-
-## License
-
-MIT — fork freely, use in production, no attribution required.
