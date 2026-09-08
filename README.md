@@ -1,14 +1,17 @@
 # 🏛️ Arquitetura MCP para Setor Público (fastmcp-public-service)
-Documento técnico completo contendo: ambiente Docker, documentação do sistema, diagramas, regras de Guardrails, integração de ferramentas de qualidade e prompt definitivo para o Agente Arquiteto de Software do Setor Público.
-Importante: Em ambiente de desenvolvimento, banco utilizado SQL Server. EM Produção e Homologação, Postgresql.
+
+>Documento técnico completo contendo: ambiente Docker, documentação do sistema, diagramas, regras de Guardrails, integração de ferramentas de qualidade e prompt definitivo para o Agente Arquiteto de Software do Setor Público.
+Importante: Em ambiente de desenvolvimento, banco utilizado SQL Server. Em Produção e Homologação, utilizo Postgresql. Camada adicional Kubernetes inserida para vislumbre dos pods.
 ---
 
-## 1.1 Servidor MCP - Características/Problemas/Backlog
+# 📌 1. Servidor MCP - Características
 
-[x] Arquitetura Kubernetes para produção.
-[x] Gerenciar um pool de conexões de banco de dados com segurança entre chamadas assíncronas.
-[x] Impedir injeção de prompt via invocação não autorizada de ferramentas.
-[x] Rastreio na sua pilha de observabilidade - **caminho crítico**.
+## 1.1 Servidor MCP - Problemas/Backlog
+
+* [x] Arquitetura Kubernetes para produção.
+* [x] Gerenciar um pool de conexões de banco de dados com segurança entre chamadas assíncronas.
+* [x] Impedir injeção de prompt via invocação não autorizada de ferramentas.
+* [x] Rastreio na sua pilha de observabilidade - **caminho crítico**.
 
 ---
 
@@ -282,7 +285,7 @@ flowchart LR
 
 ---
 
-## 2. Modelo de Segurança
+## ⚙ 2. Modelo de Segurança
 
 Invocações de ferramentas são controladas por uma lista de permissões em YAML carregada na inicialização do servidor. Qualquer ferramenta que não esteja na lista gera `PermissionError` antes da execução — impedindo ataques de injeção de prompt onde um prompt malicioso tenta invocar uma ferramenta interna ou de depuração.
 
@@ -324,7 +327,7 @@ async def search_records(query: str, limit: int = 20) -> dict:
 
 ---
 
-## 3. Observabilidade
+## 🎯  3. Observabilidade
 
 Cada chamada de ferramenta é automaticamente instrumentada via o decorador `@instrument_tool`. O decorador é a **camada mais externa** — registra todas as tentativas, inclusive chamadas bloqueadas pela lista de permissões.
 
