@@ -1,0 +1,15 @@
+Atue como um Especialista em Segurança de Aplicações e Dados. Preciso de suporte para criar dados de teste de integração que validem as regras de conformidade e segurança do servidor FastMCP.
+
+Gere dois artefatos:
+
+1. Script SQL de Fixtures de Borda (`integration_test_data.sql`):
+   Crie um conjunto de 5 a 7 registros `INSERT` para a tabela `records` que incluam casos de borda para testar a integração:
+   - Um registro com um campo `name` ou `description` contendo payloads de tentativa de injeção SQL (ex: `' OR '1'='1`, `'; DROP TABLE records;--`).
+   - Um registro com dados que simulam PII (mesmo que a tabela atual seja genérica, simule no campo `description` ou `metadata` strings como "CPF do servidor: 123.456.789-00" e "Email: teste@dominio.com").
+   - Um registro com caracteres especiais, acentos e emojis para validar o encoding UTF-8 do `asyncpg`.
+
+2. Casos de Teste de Integração (`test_security_compliance.py`):
+   Escreva testes `pytest` marcados com `@pytest.mark.integration` que:
+   - Chamem `search_records` com um payload de injeção SQL no parâmetro `query` e validem que o banco retorna 0 resultados (ou falha de forma segura) sem executar a injeção, provando que a parametrização `$1` está funcionando.
+   - Chamem `get_record_detail` para o registro com PII e validem, via asserção, que a resposta (ou um middleware de pós-processamento, se implementado) contém os dados mascarados conforme a regra `***.***.***-XX` para CPF, ou documente no teste que o mascaramento deve ser validado em uma camada superior de API Gateway.
+   - Validem que o uso de um filtro inválido na ferramenta `search_records` (ex: `filters={"injected_column": "value"}`) levanta um `ValueError` antes mesmo de tocar no banco de dados, conforme a lógica de `allowed_filter_cols`.

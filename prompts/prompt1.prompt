@@ -1,0 +1,11 @@
+Gere um arquivo de teste de integração chamado `test_integration_e2e_flow.py` para o projeto FastMCP. O teste deve usar o marcador `@pytest.mark.integration`. 
+
+Crie 3 cenários de teste distintos que validem o fluxo completo de integração:
+
+1. Cenário de Sucesso com Paginação e Filtro: Simule uma chamada de ferramenta `search_records` via cliente MCP (ou chamando a função diretamente com o pool real inicializado) que retorne múltiplas páginas. Valide se os parâmetros `limit` e `offset` são respeitados e se o JSON de resposta contém as chaves exatas: `results`, `total`, `limit`, `offset`, `query`.
+
+2. Cenário de Bloqueio por Guardrail (Allowlist): Simule uma tentativa de invocação de uma ferramenta que NÃO está no `config/allowlist.yaml` (por exemplo, uma ferramenta hipotética `delete_records` ou a própria `get_pool_status` se decidirmos testar o bloqueio explícito de algo removido). Valide se a resposta retorna um erro estruturado (ex: `isError: true` ou `PermissionError` propagado corretamente pelo FastMCP) e se o log de auditoria foi gerado.
+
+3. Cenário de Resiliência de Banco de Dados: Simule uma falha de constraint ou timeout. Como o `search_records` usa consultas parametrizadas, injete um cenário onde o banco de dados retorna um erro (ex: usando um mock no nível da conexão do pool ou inserindo dados que violem uma constraint, se aplicável) e valide se o decorador `@instrument_tool` registra corretamente a métrica `mcp.tool.errors` e se a exceção é propagada sem vazar detalhes internos do banco (como stack traces de SQL) para o cliente MCP.
+
+Inclua os fixtures necessários (`db_pool`, `mock_telemetry`) baseados no `conftest.py` existente no proje
